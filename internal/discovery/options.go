@@ -5,6 +5,7 @@ import (
 
 	"github.com/gruntwork-io/terragrunt/internal/component"
 	"github.com/gruntwork-io/terragrunt/internal/filter"
+	"github.com/gruntwork-io/terragrunt/internal/hclparse"
 	"github.com/gruntwork-io/terragrunt/internal/worktrees"
 )
 
@@ -128,6 +129,14 @@ func (d *Discovery) WithReadFiles() *Discovery {
 // the browse TUI, set it themselves.
 func (d *Discovery) WithTrackReads() *Discovery {
 	d.trackReads = true
+
+	return d
+}
+
+// WithParseStore makes the config rewrite memoize its parses in p instead of the discovery's own Store.
+// Discoveries that share p share the files they parse.
+func (d *Discovery) WithParseStore(p *hclparse.Store) *Discovery {
+	d.parseStore = p
 
 	return d
 }

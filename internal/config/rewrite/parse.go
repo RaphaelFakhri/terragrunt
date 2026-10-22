@@ -17,9 +17,19 @@ import (
 	"github.com/gruntwork-io/terragrunt/pkg/log"
 )
 
-// ParseConfigFile parses the config file at cfgPath and the files it merges in, caching nothing and fetching no
-// dependency outputs. It returns the errors of the parse, which [UnitConfig.ToV1] returns again with those of
-// resolving the outputs, and nil when the parse produced no config.
+// ParseConfigFile parses the config file at cfgPath and the files it merges in, without fetching dependency
+// outputs. It returns the parse and the config of the parse alone, without the run parts. Discovery reads that
+// config.
+//
+// p memoizes the parse by file and context. A second call with the same file and context reuses the first call's
+// evaluation and gets a new config built from it.
+//
+// Returns the errors of the parse, which [UnitConfig.ToV1] returns again along with the errors of resolving the
+// outputs. Returns no parse when the parse produced no config.
+//
+// A memoized parse reports the files it read to p only when pc's run records its reads. For any other run,
+// [hclparse.Store.Invalidate] finds the parse by the config files it parsed, but not by a file it read through
+// a function such as file.
 func ParseConfigFile(
 	ctx context.Context,
 	l log.Logger,
@@ -27,16 +37,17 @@ func ParseConfigFile(
 	p *hclparse.Store,
 	pc *ParseContext,
 	cfgPath string,
-) (*UnitConfig, error) {
+) (*UnitConfig, *pkgconfig.TerragruntConfig, error) {
 	c, cfg, err := parseFile(ctx, l, v, p, pc, cfgPath)
 	if cfg == nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return c, err
+	return c, cfg, err
 }
 
-// ParseConfig parses the config in file and the files it merges in, as [ParseConfigFile] does.
+// ParseConfig parses the config in file and the files it merges in, as [ParseConfigFile] does. p does not memoize
+// the parse of file itself, because the content of file need not match the file at its path.
 func ParseConfig(
 	ctx context.Context,
 	l log.Logger,
@@ -44,22 +55,30 @@ func ParseConfig(
 	p *hclparse.Store,
 	pc *ParseContext,
 	file *pkghclparse.File,
-) (*UnitConfig, error) {
+) (*UnitConfig, *pkgconfig.TerragruntConfig, error) {
 	c, err := prepare(ctx, l, v, pc, file)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	cfg, err := c.assemble(ctx, l, v, includeParser{store: p})
 	if cfg == nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return c, err
+	return c, cfg, err
 }
 
-// parseFile parses and assembles the file at cfgPath one level deeper than pc. The parsed config is nil when the
-// parse failed before decoding the file.
+// parsedFile is what a memoized parse produces.
+type parsedFile struct {
+	// c is the parse, nil when it failed before decoding the file.
+	c *UnitConfig
+	// cfg is the config of the parse, nil when it produced none.
+	cfg *pkgconfig.TerragruntConfig
+}
+
+// parseFile parses and assembles the file at cfgPath one level deeper than pc, through p when pc is memoized.
+// The parsed config is nil when the parse failed before decoding the file.
 func parseFile(
 	ctx context.Context,
 	l log.Logger,
@@ -73,7 +92,49 @@ func parseFile(
 		return nil, nil, err
 	}
 
-	if _, err := v.FS.Stat(cfgPath); err != nil {
+	if !pc.memoized {
+		return parseFileOnce(ctx, l, v, p, pc, cfgPath)
+	}
+
+	key := hclparse.Key{Path: filepath.Clean(cfgPath), Context: pc.file.key, Stage: hclparse.StageQueue}
+	flight := pc.forFlight()
+
+	res, err := p.Resolve(ctx, key, func(ctx context.Context) (*parsedFile, error) {
+		c, cfg, err := parseFileOnce(ctx, l, v, p, flight, cfgPath)
+		hclparse.NoteReads(ctx, flight.run.FilesRead.Paths()...)
+
+		return &parsedFile{c: c, cfg: cfg}, err
+	})
+
+	for _, path := range res.Reads {
+		pc.run.FilesRead.Add(path)
+	}
+
+	if res.Value == nil || res.Value.c == nil {
+		return nil, nil, err
+	}
+
+	c := res.Value.c.rebind(l, v, pc.run)
+	cfg := res.Value.cfg
+
+	if res.Hit && err == nil {
+		cfg, err = c.assemble(ctx, l, v, keptQueueIncludes{})
+	}
+
+	return c, cfg, err
+}
+
+// parseFileOnce parses and assembles the file at cfgPath with pc, sharing only the file's syntax tree through p.
+func parseFileOnce(
+	ctx context.Context,
+	l log.Logger,
+	v *venv.Venv,
+	p *hclparse.Store,
+	pc *ParseContext,
+	cfgPath string,
+) (*UnitConfig, *pkgconfig.TerragruntConfig, error) {
+	info, err := v.FS.Stat(cfgPath)
+	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil, pkgconfig.TerragruntConfigNotFoundError{Path: cfgPath}
 		}
@@ -96,8 +157,9 @@ func parseFile(
 		pc.file.include,
 		false,
 		func(childCtx context.Context, l log.Logger) error {
-			file, parseErr := pkghclparse.NewParser(pc.parserOptions(l, v)...).
-				ParseFromFile(v.FS, cfgPath)
+			parser := pkghclparse.NewParser(pc.parserOptions(l, v)...)
+
+			file, parseErr := p.AST(childCtx, v.FS, cfgPath, info, parser)
 			if parseErr != nil {
 				return parseErr
 			}
@@ -114,6 +176,37 @@ func parseFile(
 	)
 
 	return c, cfg, err
+}
+
+// rebind returns a copy of c that reads run's settings. [UnitConfig.ToV1] on the copy records its reads in run's
+// FilesRead and reports diagnostics through l and the writers of v. rebind rebinds the copy's file and kept files
+// the same way and leaves c unchanged, so every caller can share the memoized parse.
+func (c *UnitConfig) rebind(l log.Logger, v *venv.Venv, run *pkgconfig.ParsingContext) *UnitConfig {
+	r := *c
+	r.pc = c.pc.withRun(run)
+	r.file = c.file.Rebind(pkghclparse.NewParser(r.pc.parserOptions(l, v)...))
+
+	if c.deps != nil {
+		deps := *c.deps
+		deps.file = r.file
+		r.deps = &deps
+	}
+
+	if c.autoInclude != nil {
+		r.autoInclude = c.autoInclude.rebind(l, v, run)
+	}
+
+	if c.includedFiles != nil {
+		r.includedFiles = make([]*includedFile, len(c.includedFiles))
+
+		for i, included := range c.includedFiles {
+			if included != nil {
+				r.includedFiles[i] = included.rebind(l, v, run)
+			}
+		}
+	}
+
+	return &r
 }
 
 // prepare runs the stages of [pkgconfig.ParseConfig] through the block decode. It decodes file's dependency

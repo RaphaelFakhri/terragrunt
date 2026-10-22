@@ -86,7 +86,7 @@ var parsingContextFieldsOutsideKey = map[string]string{
 	"OriginalTerragruntConfigPath": "every function that reads it stops the result being shared",
 	"SourceMap": "only get_working_dir, the remote state source URL, dependencies, and stack files read it, and " +
 		"none of those results are shared",
-	"readConfigChain":                  "it only detects cycles, which fail the read, and failed reads aren't cached",
+	"ReadConfigChain":                  "it only detects cycles, which fail the read, and failed reads aren't cached",
 	"ParseDepth":                       "it only limits nesting, and going past the limit fails the read",
 	"RootWorkingDir":                   logTextOnly,
 	"LogShowAbsPaths":                  logTextOnly,

@@ -1238,17 +1238,17 @@ func ParseTerragruntConfig(
 
 	// The chain ends with the last read target. A reader that differs from it was reached through a
 	// dependency block, so append it to keep that hop in the chain.
-	reader := readConfigFrame{path: readingPath, originalPath: pctx.OriginalTerragruntConfigPath}
-	target := readConfigFrame{path: path, originalPath: pctx.OriginalTerragruntConfigPath}
+	reader := ReadConfigFrame{Path: readingPath, OriginalPath: pctx.OriginalTerragruntConfigPath}
+	target := ReadConfigFrame{Path: path, OriginalPath: pctx.OriginalTerragruntConfigPath}
 
 	// ReadStackConfigFile parses a stack file under its own original config, so record it that way.
 	if base := filepath.Base(targetConfig); base == DefaultStackFile || base == DefaultAutoIncludeStackFile {
-		target.originalPath = targetConfig
+		target.OriginalPath = targetConfig
 	}
 
-	chain := pctx.readConfigChain
+	chain := pctx.ReadConfigChain
 	if len(chain) == 0 || chain[len(chain)-1] != reader {
-		chain = slices.Concat(chain, []readConfigFrame{reader})
+		chain = slices.Concat(chain, []ReadConfigFrame{reader})
 	}
 
 	if slices.Contains(chain, target) {
@@ -1262,7 +1262,7 @@ func ParseTerragruntConfig(
 		return cty.NilVal, err
 	}
 
-	pctx.readConfigChain = slices.Concat(chain, []readConfigFrame{target})
+	pctx.ReadConfigChain = slices.Concat(chain, []ReadConfigFrame{target})
 
 	pctx = pctx.WithDiagnosticsSuppressed().forReadTarget()
 

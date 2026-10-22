@@ -79,10 +79,10 @@ type ParsingContext struct {
 	// Parser configures the HCL parsers this context builds.
 	Parser ParserSettings
 
-	// readConfigChain lists the configs being parsed by nested read_terragrunt_config calls,
+	// ReadConfigChain lists the configs being parsed by nested read_terragrunt_config calls,
 	// outermost first: each read target, plus each config a dependency block parses in between.
 	// Clones share it, so it is only ever extended with slices.Concat.
-	readConfigChain []readConfigFrame
+	ReadConfigChain []ReadConfigFrame
 
 	ProviderCacheOptions pcoptions.ProviderCacheOptions
 
@@ -340,22 +340,22 @@ func (ctx *ParsingContext) WithDependencyConfigPath(
 	return l, c, nil
 }
 
-// readConfigFrame is one config on the read_terragrunt_config chain. A dependency block or a stack
+// ReadConfigFrame is one config on the read_terragrunt_config chain. A dependency block or a stack
 // file is parsed under its own original config, so get_original_terragrunt_dir() can make the same
 // file evaluate differently. Only a file parsed again under the same original config is a cycle.
-type readConfigFrame struct {
-	path         string
-	originalPath string
+type ReadConfigFrame struct {
+	Path         string
+	OriginalPath string
 }
 
 // readConfigChainPaths returns the paths of chain followed by last, for a cycle error.
-func readConfigChainPaths(chain []readConfigFrame, last readConfigFrame) []string {
+func readConfigChainPaths(chain []ReadConfigFrame, last ReadConfigFrame) []string {
 	paths := make([]string, 0, len(chain)+1)
 	for _, frame := range chain {
-		paths = append(paths, frame.path)
+		paths = append(paths, frame.Path)
 	}
 
-	return append(paths, last.path)
+	return append(paths, last.Path)
 }
 
 // forReadTarget returns a copy for parsing a config that read_terragrunt_config reads, without the evaluation state
