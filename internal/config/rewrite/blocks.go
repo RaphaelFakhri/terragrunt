@@ -17,6 +17,16 @@ type UnitBody struct {
 	RemoteStateAttr *cty.Value
 	// Generate is the generate blocks, in source order.
 	Generate []Generate `hcl:"generate,block"`
+	// Variables is the variables blocks, in source order.
+	Variables []Variables `hcl:"variables,block"`
+}
+
+// Variables is a variables block.
+type Variables struct {
+	Kind     *string   `hcl:"kind,attr"`
+	Nullable *bool     `hcl:"nullable,attr"`
+	Validate *bool     `hcl:"validate,attr"`
+	Inputs   cty.Value `hcl:"inputs,attr"`
 }
 
 // Catalog is a catalog block.

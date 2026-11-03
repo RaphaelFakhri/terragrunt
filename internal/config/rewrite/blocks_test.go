@@ -139,6 +139,11 @@ func TestSchemaMatchesPkgConfig(t *testing.T) {
 			header: reflect.TypeFor[config.ModuleDependencies](),
 		},
 		{
+			block:  pkgconfig.MetadataVariables,
+			v1:     reflect.TypeFor[pkgconfig.VariablesBlock](),
+			header: reflect.TypeFor[config.Variables](),
+		},
+		{
 			block:      pkgconfig.MetadataDependency,
 			header:     reflect.TypeFor[config.Dependency](),
 			labelsOnly: true,

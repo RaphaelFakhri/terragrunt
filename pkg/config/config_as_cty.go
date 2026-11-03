@@ -130,6 +130,15 @@ func TerragruntConfigAsCty(config *TerragruntConfig) (cty.Value, error) {
 		output[MetadataInputs] = inputsCty
 	}
 
+	variablesCty, err := variablesBlocksAsCty(config.Variables)
+	if err != nil {
+		return cty.NilVal, fieldError(MetadataVariables, err)
+	}
+
+	if variablesCty != cty.NilVal {
+		output[MetadataVariables] = variablesCty
+	}
+
 	localsCty, err := convertToCtyWithJSON(config.Locals)
 	if err != nil {
 		return cty.NilVal, fieldError(MetadataLocals, err)

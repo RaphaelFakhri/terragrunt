@@ -33,6 +33,7 @@ func (c *UnitConfig) v1File() *pkgconfig.TerragruntConfigFile {
 		Errors:                      c.Errors.v1(),
 		GenerateAttrs:               clonePtr(c.Body.GenerateAttrs),
 		GenerateBlocks:              convertAll(c.Body.Generate, (*Generate).v1),
+		Variables:                   convertAll(c.Body.Variables, (*Variables).v1),
 	}
 }
 
@@ -223,6 +224,15 @@ func (g *Generate) v1() pkgconfig.TerragruntGenerateBlock {
 		Path:             g.Path,
 		IfExists:         g.IfExists,
 		Contents:         g.Contents,
+	}
+}
+
+func (b *Variables) v1() pkgconfig.VariablesBlock {
+	return pkgconfig.VariablesBlock{
+		Kind:     clonePtr(b.Kind),
+		Nullable: clonePtr(b.Nullable),
+		Validate: clonePtr(b.Validate),
+		Inputs:   b.Inputs,
 	}
 }
 
