@@ -66,7 +66,7 @@ func Run(
 
 	return withSourceGuidance(Stream(
 		streamCtx, l, v.Writers.Writer, renderer,
-		newLoadFunc(l, v, opts, tempDirs, repoURL),
+		NewLoadFunc(l, v, opts, tempDirs, repoURL),
 	))
 }
 
@@ -121,12 +121,15 @@ func runTUI(
 
 	return tui.Run(
 		ctx, l, v, opts.TerragruntOptions, warnCh,
-		newLoadFunc(loadLogger, v, opts, tempDirs, repoURL),
+		NewLoadFunc(loadLogger, v, opts, tempDirs, repoURL),
 	)
 }
 
-// newLoadFunc returns the loader that every output format drives.
-func newLoadFunc(
+// NewLoadFunc returns the loader that sends each component it finds to the
+// channel it is given. It loads repoURL alone when one is given, and every
+// source discovery finds otherwise. The clones it keeps are recorded on
+// tempDirs, which the caller cleans up.
+func NewLoadFunc(
 	l log.Logger,
 	v *venv.Venv,
 	opts *Options,
